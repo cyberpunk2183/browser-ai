@@ -217,6 +217,63 @@ def tool_screenshot(args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "image", "data": b64, "mimeType": "image/png"}]}
 
 
+def _download_dir() -> str:
+    """Where PDFs land by default: WEBAI_DOWNLOAD_DIR, else ~/Downloads, else ~."""
+    env = os.environ.get("WEBAI_DOWNLOAD_DIR")
+    if env:
+        return os.path.expanduser(env)
+    downloads = os.path.expanduser("~/Downloads")
+    return downloads if os.path.isdir(downloads) else os.path.expanduser("~")
+
+
+def _safe_filename(name: str) -> str:
+    keep = "".join(c if c.isalnum() or c in " -_.()[]" else "_" for c in name).strip()
+    return (keep or "pagina")[:120]
+
+
+def tool_download_pdf(args: dict[str, Any]) -> dict[str, Any]:
+    """Save the current page as a PDF and return the file path."""
+    import base64
+    sess, target = _session(args)
+    try:
+        title = sess.evaluate("document.title") or "pagina"
+        b64 = sess.print_pdf_b64()
+    finally:
+        sess.close()
+    if not b64:
+        raise cdp.CDPError("PDF generation failed.")
+
+    path = args.get("path")
+    if path:
+        path = os.path.expanduser(path)
+        if os.path.isdir(path):
+            path = os.path.join(path, _safe_filename(str(title)) + ".pdf")
+    else:
+        path = os.path.join(_download_dir(), _safe_filename(str(title)) + ".pdf")
+    if not path.lower().endswith(".pdf"):
+        path += ".pdf"
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(base64.b64decode(b64))
+    return _data({"saved": path, "bytes": os.path.getsize(path),
+                  "title": title, "url": target.get("url")})
+
+
+def tool_switch_tab(args: dict[str, Any]) -> dict[str, Any]:
+    """Bring a tab to the front (activate it)."""
+    target_id = args["target_id"]
+    cdp.activate_tab(target_id)  # HTTP /json/activate
+    # Also nudge the page itself to the foreground.
+    sess, target = cdp.session_for(target_id)
+    try:
+        sess.bring_to_front()
+    except cdp.CDPError:
+        pass
+    finally:
+        sess.close()
+    return _data({"active": target_id, "title": target.get("title"), "url": target.get("url")})
+
+
 # --- tool registry ----------------------------------------------------------
 
 HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
@@ -231,6 +288,8 @@ HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "web_wait": tool_wait,
     "web_eval": tool_eval,
     "web_screenshot": tool_screenshot,
+    "web_download_pdf": tool_download_pdf,
+    "web_switch_tab": tool_switch_tab,
 }
 
 _TARGET = {"target_id": {"type": "string",
@@ -280,6 +339,14 @@ TOOLS: list[dict[str, Any]] = [
     {"name": "web_screenshot",
      "description": "Capture a PNG screenshot of the tab.",
      "inputSchema": _schema({})},
+    {"name": "web_download_pdf",
+     "description": "Save the current page as a PDF and return the file path. Optional 'path' "
+                    "(a file or a folder); defaults to ~/Downloads named after the page title.",
+     "inputSchema": _schema({"path": {"type": "string"}})},
+    {"name": "web_switch_tab",
+     "description": "Bring a tab to the front / make it active, by id.",
+     "inputSchema": {"type": "object", "properties": {"target_id": {"type": "string"}},
+                     "required": ["target_id"]}},
 ]
 
 

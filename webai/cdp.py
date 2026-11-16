@@ -233,6 +233,14 @@ class Session:
         result = self.call("Page.captureScreenshot", {"format": "png"})
         return result.get("data", "")
 
+    def print_pdf_b64(self) -> str:
+        # printToPDF streams base64; printBackground keeps colours/logos.
+        result = self.call("Page.printToPDF", {"printBackground": True}, timeout=60.0)
+        return result.get("data", "")
+
+    def bring_to_front(self) -> None:
+        self.call("Page.bringToFront")
+
     def close(self) -> None:
         self._ws.close()
 

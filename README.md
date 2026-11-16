@@ -68,6 +68,8 @@ qualquer lugar. Em outros clientes MCP o formato é o mesmo:
 | `web_wait` | Espera um elemento aparecer. |
 | `web_eval` | Roda JavaScript na página (a ferramenta "coringa"). |
 | `web_screenshot` | PNG da aba (para IAs com visão). |
+| `web_download_pdf` | Salva a página atual como **PDF** e retorna o caminho do arquivo. |
+| `web_switch_tab` | Traz uma aba para frente / torna ativa, pelo id. |
 
 Toda ferramenta aceita `target_id` para escolher a aba; sem ele, usa a primeira.
 
@@ -88,6 +90,7 @@ Toda ferramenta aceita `target_id` para escolher a aba; sem ele, usa a primeira.
 | `WEBAI_HOST` | `127.0.0.1` | Host da porta de debug. |
 | `WEBAI_PORT` | `9222` | Porta de debug do Chrome. |
 | `WEBAI_NO_EVAL` | — | `1` desliga o `web_eval`. |
+| `WEBAI_DOWNLOAD_DIR` | `~/Downloads` | Pasta padrão dos PDFs de `web_download_pdf`. |
 | `WEBAI_DEBUG` | — | `1` inclui traceback nos erros de ferramenta. |
 
 ## Testes

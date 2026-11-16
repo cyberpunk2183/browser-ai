@@ -68,6 +68,14 @@ class FakeSession:
     def screenshot_png_b64(self):
         return "ZmFrZQ=="  # "fake" in base64
 
+    def print_pdf_b64(self):
+        # Minimal valid-ish PDF bytes, base64-encoded.
+        import base64
+        return base64.b64encode(b"%PDF-1.4 fake pdf").decode("ascii")
+
+    def bring_to_front(self):
+        self.calls.append("bring_to_front")
+
     def close(self):
         self.closed = True
 
@@ -129,3 +137,43 @@ def test_screenshot_returns_image(monkeypatch):
     out = mcp_server.tool_screenshot({})
     assert out["content"][0]["type"] == "image"
     assert out["content"][0]["mimeType"] == "image/png"
+
+
+def test_download_pdf_writes_file(monkeypatch, tmp_path):
+    sess = FakeSession({"document.title": "Peticao Inicial"})
+    _patch_session(monkeypatch, sess)
+    out = mcp_server.tool_download_pdf({"path": str(tmp_path)})
+    data = json.loads(out["content"][0]["text"])
+    assert data["saved"].endswith(".pdf")
+    assert "Peticao Inicial" in data["saved"]
+    assert os.path.isfile(data["saved"])
+    assert data["bytes"] > 0
+
+
+def test_download_pdf_default_dir(monkeypatch, tmp_path):
+    sess = FakeSession({"document.title": "Contrato"})
+    _patch_session(monkeypatch, sess)
+    monkeypatch.setenv("WEBAI_DOWNLOAD_DIR", str(tmp_path))
+    out = mcp_server.tool_download_pdf({})
+    data = json.loads(out["content"][0]["text"])
+    assert data["saved"] == os.path.join(str(tmp_path), "Contrato.pdf")
+
+
+def test_switch_tab_activates(monkeypatch):
+    calls = {}
+    monkeypatch.setattr(mcp_server.cdp, "activate_tab",
+                        lambda tid, **kw: calls.setdefault("activated", tid))
+    sess = FakeSession()
+    monkeypatch.setattr(mcp_server.cdp, "session_for",
+                        lambda target_id=None, **kw: (sess, {"id": target_id, "title": "T", "url": "u"}))
+    out = mcp_server.tool_switch_tab({"target_id": "ABC"})
+    data = json.loads(out["content"][0]["text"])
+    assert data["active"] == "ABC"
+    assert calls["activated"] == "ABC"
+    assert "bring_to_front" in sess.calls
+
+
+def test_filename_is_sanitised():
+    bad = 'Proc: 123/2026 <auto> "réu"?'
+    safe = mcp_server._safe_filename(bad)
+    assert "/" not in safe and "<" not in safe and '"' not in safe and "?" not in safe
