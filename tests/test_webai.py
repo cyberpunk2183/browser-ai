@@ -173,6 +173,51 @@ def test_switch_tab_activates(monkeypatch):
     assert "bring_to_front" in sess.calls
 
 
+class SeqSession:
+    """Session whose location.href changes after a history.go(), to model navigation."""
+    def __init__(self):
+        self.href = "https://b.com"
+        self.calls = []
+        self.closed = False
+
+    def evaluate(self, expression, await_promise=True):
+        self.calls.append(expression)
+        if "history.go" in expression:
+            self.href = "https://a.com"  # navigation happened
+            return None
+        if "location.href" in expression:
+            return self.href
+        if "document.title" in expression:
+            return "Página A"
+        return None
+
+    def close(self):
+        self.closed = True
+
+
+def test_back_reports_new_url(monkeypatch):
+    sess = SeqSession()
+    monkeypatch.setattr(mcp_server.cdp, "session_for", lambda target_id=None, **kw: (sess, {"id": "T"}))
+    out = mcp_server.tool_back({})
+    data = json.loads(out["content"][0]["text"])
+    assert data["back"] is True and data["url"] == "https://a.com"
+    assert any("history.go(-1)" in c for c in sess.calls)
+
+
+def test_forward_uses_positive_delta(monkeypatch):
+    sess = SeqSession()
+    monkeypatch.setattr(mcp_server.cdp, "session_for", lambda target_id=None, **kw: (sess, {"id": "T"}))
+    mcp_server.tool_forward({})
+    assert any("history.go(1)" in c for c in sess.calls)
+
+
+def test_back_when_no_history(monkeypatch):
+    sess = FakeSession({"location.href": "https://same.com"})  # href never changes
+    _patch_session(monkeypatch, sess)
+    out = mcp_server.tool_back({})
+    assert "no page to go back" in out["content"][0]["text"]
+
+
 def test_filename_is_sanitised():
     bad = 'Proc: 123/2026 <auto> "réu"?'
     safe = mcp_server._safe_filename(bad)

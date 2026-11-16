@@ -259,6 +259,30 @@ def tool_download_pdf(args: dict[str, Any]) -> dict[str, Any]:
                   "title": title, "url": target.get("url")})
 
 
+def _history_go(args: dict[str, Any], delta: int, word: str) -> dict[str, Any]:
+    sess, _ = _session(args)
+    try:
+        before = sess.evaluate("location.href")
+        sess.evaluate(f"history.go({delta})")
+        import time
+        time.sleep(0.4)  # history navigation is async; let it settle
+        after = sess.evaluate("location.href")
+        title = sess.evaluate("document.title")
+    finally:
+        sess.close()
+    if before == after:
+        return _text(f"no page to go {word} to (history unchanged: {after})")
+    return _data({word: True, "url": after, "title": title})
+
+
+def tool_back(args: dict[str, Any]) -> dict[str, Any]:
+    return _history_go(args, -1, "back")
+
+
+def tool_forward(args: dict[str, Any]) -> dict[str, Any]:
+    return _history_go(args, 1, "forward")
+
+
 def tool_switch_tab(args: dict[str, Any]) -> dict[str, Any]:
     """Bring a tab to the front (activate it)."""
     target_id = args["target_id"]
@@ -290,6 +314,8 @@ HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "web_screenshot": tool_screenshot,
     "web_download_pdf": tool_download_pdf,
     "web_switch_tab": tool_switch_tab,
+    "web_back": tool_back,
+    "web_forward": tool_forward,
 }
 
 _TARGET = {"target_id": {"type": "string",
@@ -347,6 +373,12 @@ TOOLS: list[dict[str, Any]] = [
      "description": "Bring a tab to the front / make it active, by id.",
      "inputSchema": {"type": "object", "properties": {"target_id": {"type": "string"}},
                      "required": ["target_id"]}},
+    {"name": "web_back",
+     "description": "Go back one entry in the tab's history (like the browser's Back button).",
+     "inputSchema": _schema({})},
+    {"name": "web_forward",
+     "description": "Go forward one entry in the tab's history (like the browser's Forward button).",
+     "inputSchema": _schema({})},
 ]
 
 

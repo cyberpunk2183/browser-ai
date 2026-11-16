@@ -70,6 +70,8 @@ qualquer lugar. Em outros clientes MCP o formato é o mesmo:
 | `web_screenshot` | PNG da aba (para IAs com visão). |
 | `web_download_pdf` | Salva a página atual como **PDF** e retorna o caminho do arquivo. |
 | `web_switch_tab` | Traz uma aba para frente / torna ativa, pelo id. |
+| `web_back` | Volta uma entrada no histórico da aba (botão Voltar). |
+| `web_forward` | Avança uma entrada no histórico da aba (botão Avançar). |
 
 Toda ferramenta aceita `target_id` para escolher a aba; sem ele, usa a primeira.
 
