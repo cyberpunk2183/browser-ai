@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "browser-ai"
+version = "0.1.0"
+description = "Drive Chrome from an AI agent over MCP (Chrome DevTools Protocol). Standard library only."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "cyberpunk" }]
+keywords = ["mcp", "chrome", "cdp", "browser", "automation", "agent", "codex"]
+dependencies = []
+
+[project.scripts]
+web-ai = "webai.cli:main"
+
+[tool.setuptools]
+packages = ["webai"]
