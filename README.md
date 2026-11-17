@@ -16,23 +16,35 @@ Agente (Codex)  ──MCP/stdio──►  web-ai  ──CDP──►  Chrome (po
 
 ## Passo 1 — subir o Chrome com a porta de debug
 
-Use um perfil **dedicado** (mantém a automação longe do seu perfil do dia a dia):
+**Jeito fácil (recomendado):** deixa o próprio browser-ai abrir o Chrome do jeito
+certo (porta + perfil dedicado), mesmo que você já tenha o Chrome aberto:
+
+```bash
+web-ai start        # ou:  python3 -m webai start
+```
+
+Deixe essa janela do Chrome aberta e pronto. (Para servidor sem tela, use
+`WEBAI_HEADLESS=1 web-ai start`.)
+
+**Jeito manual**, se preferir você mesmo: use um perfil **dedicado** (é ele que
+permite abrir a porta mesmo com seu Chrome normal já aberto):
 
 ```bash
 google-chrome --remote-debugging-port=9222 \
   --user-data-dir="$HOME/.browser-ai-profile"
 ```
 
-(Qualquer navegador Chromium serve: chromium, brave, edge. Para rodar sem janela,
-acrescente `--headless=new`.)
+(Qualquer navegador Chromium serve: chromium, brave, edge.)
 
-## Passo 2 — conferir a conexão
+## Passo 2 — conferir que o agente controla o navegador
 
 ```bash
-cd browser-ai
-python3 -m webai doctor     # ✓ Chrome reachable ... N tab(s) open
-python3 -m webai tabs       # lista as abas abertas
+web-ai doctor     # ✓ Debug port open ... ✓ Full control works
+web-ai tabs       # lista as abas abertas
 ```
+
+O `doctor` não só vê a porta: ele **roda um comando dentro da aba** para confirmar
+que clicar/digitar/ler vão funcionar. Se ele reclamar, siga a mensagem.
 
 ## Passo 3 — plugar no Codex
 
@@ -85,6 +97,28 @@ Toda ferramenta aceita `target_id` para escolher a aba; sem ele, usa a primeira.
 - A porta de debug (9222) dá controle total do navegador a quem alcançá-la.
   Deixe em `127.0.0.1` e não exponha na rede.
 
+## Solução de problemas
+
+**"O agente lê a página, mas não clica, não digita e não acessa as abas."**
+Esse é o sintoma nº 1, e quase sempre significa que **a porta de depuração não
+está aberta** — então o agente não fala com o navegador por CDP e tenta se virar
+"no olho" (lê um pouco, mas não controla). Causa mais comum no Windows/macOS:
+**o Chrome já estava aberto** quando você rodou o comando, e aí o
+`--remote-debugging-port` é **ignorado**.
+
+Como resolver:
+1. Rode `web-ai doctor`. Ele diz exatamente onde está o problema.
+2. Se a porta não estiver aberta: **feche TODAS as janelas do Chrome** e rode
+   `web-ai start` (ele usa um perfil dedicado, que sobe a porta mesmo com o
+   Chrome normal aberto — mas fechar tudo é o mais garantido).
+3. Rode `web-ai doctor` de novo. Quando aparecer **"✓ Full control works"**, o
+   agente vai clicar e digitar normalmente.
+
+**"Could not reach Chrome at 127.0.0.1:9222"** → a porta não está no ar. Veja acima.
+
+**"Reached the port, but could NOT control the tab"** → tem outro depurador
+anexado (o **DevTools aberto** na aba, ou outra automação). Feche o DevTools.
+
 ## Variáveis de ambiente
 
 | Variável | Padrão | Para quê |
@@ -93,6 +127,8 @@ Toda ferramenta aceita `target_id` para escolher a aba; sem ele, usa a primeira.
 | `WEBAI_PORT` | `9222` | Porta de debug do Chrome. |
 | `WEBAI_NO_EVAL` | — | `1` desliga o `web_eval`. |
 | `WEBAI_DOWNLOAD_DIR` | `~/Downloads` | Pasta padrão dos PDFs de `web_download_pdf`. |
+| `WEBAI_PROFILE` | `~/.browser-ai-profile` | Perfil dedicado que o `web-ai start` usa. |
+| `WEBAI_HEADLESS` | — | `1` faz o `web-ai start` subir o Chrome sem janela (servidores). |
 | `WEBAI_DEBUG` | — | `1` inclui traceback nos erros de ferramenta. |
 
 ## Testes
