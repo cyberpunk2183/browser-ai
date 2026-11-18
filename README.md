@@ -154,6 +154,7 @@ anexado (o **DevTools aberto** na aba, ou outra automação). Feche o DevTools.
 | `OLLAMA_HOST` | `http://localhost:11434` | Onde o Ollama está rodando. |
 | `WEBAI_NUM_CTX` | `16384` | Janela de contexto pedida ao modelo. |
 | `WEBAI_MAX_STEPS` | `30` | Limite de ações por pedido no `web-ai chat`. |
+| `WEBAI_THINK` | — | `1` deixa modelos com raciocínio (qwen3…) pensarem antes de agir. Desligado por padrão: no processador custa minutos por passo. |
 
 ## Testes
 

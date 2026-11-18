@@ -292,6 +292,7 @@ def test_agent_runs_tool_then_answers(monkeypatch):
     assert agent.ask("quais abas?") == "Uma aba: Tribunal."
     assert sent[0]["model"] == "qwen3" and sent[0]["stream"] is False
     assert sent[0]["tools"]
+    assert sent[0]["think"] is False
     tool_msgs = [m for m in sent[1]["messages"] if m["role"] == "tool"]
     assert tool_msgs and "Tribunal" in tool_msgs[0]["content"]
     assert tool_msgs[0]["tool_name"] == "web_tabs"

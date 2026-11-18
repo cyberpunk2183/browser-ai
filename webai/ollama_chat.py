@@ -10,6 +10,8 @@ Settings (flags win over environment):
   --host  / OLLAMA_HOST        default http://localhost:11434
   WEBAI_NUM_CTX                context window to request, default 16384
   WEBAI_MAX_STEPS              tool calls allowed per request, default 30
+  WEBAI_THINK                  1 lets thinking models (qwen3…) reason first;
+                               off by default: on a CPU it costs minutes per step
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Callable
@@ -122,13 +125,16 @@ class Agent:
         self.tools = ollama_tools()
         self.max_steps = _env_int("WEBAI_MAX_STEPS", 30)
         self.options = {"num_ctx": _env_int("WEBAI_NUM_CTX", 16384)}
+        self.think = os.environ.get("WEBAI_THINK", "").strip().lower() in {"1", "true", "yes", "on"}
         self.messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     def _chat(self) -> dict[str, Any]:
+        started = time.monotonic()
         reply = self.post(self.host + "/api/chat", {
             "model": self.model, "messages": self.messages, "tools": self.tools,
-            "stream": False, "options": self.options,
+            "stream": False, "options": self.options, "think": self.think,
         })
+        self.log(f"  · model answered in {time.monotonic() - started:.1f}s")
         return reply.get("message") or {}
 
     def ask(self, prompt: str) -> str:
