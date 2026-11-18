@@ -65,6 +65,26 @@ qualquer lugar. Em outros clientes MCP o formato é o mesmo:
 { "mcpServers": { "browser-ai": { "command": "web-ai", "args": ["mcp"] } } }
 ```
 
+## Alternativa — modelo local com Ollama (sem Codex)
+
+Para rodar tudo na própria máquina, sem nada sair dela, o `web-ai chat` conversa
+direto com o [Ollama](https://ollama.com) e usa as mesmas ferramentas:
+
+```bash
+ollama pull qwen3            # o modelo precisa suportar tool calling
+web-ai start                 # sobe o Chrome controlável
+web-ai chat                  # modo conversa (digite "sair" para encerrar)
+web-ai chat "abra o site do TJSP e leia a página inicial"   # tarefa única
+web-ai chat --model llama3.1 # outro modelo
+```
+
+Cada ação aparece na tela (`→ web_click {...}`) antes da resposta final.
+
+**Escolha do modelo:** precisa ter suporte a ferramentas (qwen3, llama3.1,
+mistral-nemo e similares). Modelos pequenos (7–8B) servem para tarefas curtas;
+para fluxos de vários passos (login, busca, download) prefira 14B ou maior.
+O `web_screenshot` não é oferecido nesse modo (o modelo lê a página por texto).
+
 ## Ferramentas expostas ao agente
 
 | Ferramenta | O que faz |
@@ -130,6 +150,10 @@ anexado (o **DevTools aberto** na aba, ou outra automação). Feche o DevTools.
 | `WEBAI_PROFILE` | `~/.browser-ai-profile` | Perfil dedicado que o `web-ai start` usa. |
 | `WEBAI_HEADLESS` | — | `1` faz o `web-ai start` subir o Chrome sem janela (servidores). |
 | `WEBAI_DEBUG` | — | `1` inclui traceback nos erros de ferramenta. |
+| `WEBAI_MODEL` | `qwen3` | Modelo do Ollama usado pelo `web-ai chat`. |
+| `OLLAMA_HOST` | `http://localhost:11434` | Onde o Ollama está rodando. |
+| `WEBAI_NUM_CTX` | `16384` | Janela de contexto pedida ao modelo. |
+| `WEBAI_MAX_STEPS` | `30` | Limite de ações por pedido no `web-ai chat`. |
 
 ## Testes
 

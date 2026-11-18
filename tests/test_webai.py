@@ -222,3 +222,107 @@ def test_filename_is_sanitised():
     bad = 'Proc: 123/2026 <auto> "réu"?'
     safe = mcp_server._safe_filename(bad)
     assert "/" not in safe and "<" not in safe and '"' not in safe and "?" not in safe
+
+
+# --- web-ai chat (Ollama agent loop) ----------------------------------------
+
+from webai import cli, ollama_chat  # noqa: E402
+
+
+def test_cli_imports_os_for_start():
+    # Regression: `web-ai start` crashed with NameError: name 'os' is not defined.
+    assert hasattr(cli, "os")
+
+
+def test_ollama_tools_shape_and_skips_screenshot():
+    tools = ollama_chat.ollama_tools()
+    names = {t["function"]["name"] for t in tools}
+    assert "web_screenshot" not in names
+    assert "web_read" in names and "web_click" in names
+    for t in tools:
+        assert t["type"] == "function"
+        assert t["function"]["parameters"]["type"] == "object"
+
+
+def test_ollama_tools_hide_eval_when_disabled(monkeypatch):
+    monkeypatch.setenv("WEBAI_NO_EVAL", "1")
+    names = {t["function"]["name"] for t in ollama_chat.ollama_tools()}
+    assert "web_eval" not in names
+
+
+def _fake_tabs(monkeypatch):
+    monkeypatch.setattr(cdp, "list_targets",
+                        lambda *a, **k: [{"id": "T1", "title": "Tribunal", "url": "https://x.jus.br"}])
+
+
+def test_run_tool_accepts_string_arguments(monkeypatch):
+    _fake_tabs(monkeypatch)
+    out = ollama_chat.run_tool("web_tabs", "{}")
+    assert "Tribunal" in out
+
+
+def test_run_tool_bad_json_and_unknown_tool():
+    assert ollama_chat.run_tool("web_tabs", "{nope").startswith("Error:")
+    assert ollama_chat.run_tool("web_nope", {}).startswith("Error:")
+    assert ollama_chat.run_tool("web_screenshot", {}).startswith("Error:")
+
+
+def test_run_tool_truncates_long_results(monkeypatch):
+    monkeypatch.setattr(cdp, "list_targets",
+                        lambda *a, **k: [{"id": str(i), "title": "x" * 500, "url": ""} for i in range(50)])
+    out = ollama_chat.run_tool("web_tabs", {})
+    assert len(out) < ollama_chat.MAX_RESULT_CHARS + 100
+    assert "truncated" in out
+
+
+def test_agent_runs_tool_then_answers(monkeypatch):
+    _fake_tabs(monkeypatch)
+    replies = iter([
+        {"message": {"role": "assistant", "content": "",
+                     "tool_calls": [{"function": {"name": "web_tabs", "arguments": {}}}]}},
+        {"message": {"role": "assistant", "content": "Uma aba: Tribunal."}},
+    ])
+    sent = []
+
+    def post(url, payload):
+        sent.append(json.loads(json.dumps(payload)))
+        return next(replies)
+
+    agent = ollama_chat.Agent("qwen3", "http://localhost:11434/", post=post, log=lambda _: None)
+    assert agent.ask("quais abas?") == "Uma aba: Tribunal."
+    assert sent[0]["model"] == "qwen3" and sent[0]["stream"] is False
+    assert sent[0]["tools"]
+    tool_msgs = [m for m in sent[1]["messages"] if m["role"] == "tool"]
+    assert tool_msgs and "Tribunal" in tool_msgs[0]["content"]
+    assert tool_msgs[0]["tool_name"] == "web_tabs"
+
+
+def test_agent_stops_after_max_steps(monkeypatch):
+    _fake_tabs(monkeypatch)
+    monkeypatch.setenv("WEBAI_MAX_STEPS", "3")
+    loop = {"message": {"content": "",
+                        "tool_calls": [{"function": {"name": "web_tabs", "arguments": {}}}]}}
+    calls = []
+    agent = ollama_chat.Agent("m", "http://h", post=lambda u, p: calls.append(1) or loop,
+                              log=lambda _: None)
+    assert "Stopped after 3" in agent.ask("loop")
+    assert len(calls) == 3
+
+
+def test_parse_flags_and_env(monkeypatch):
+    monkeypatch.setenv("OLLAMA_HOST", "10.0.0.5:11434")
+    monkeypatch.delenv("WEBAI_MODEL", raising=False)
+    model, host, task = ollama_chat._parse(["--model", "llama3.1", "abra", "o", "google"])
+    assert (model, host, task) == ("llama3.1", "http://10.0.0.5:11434", "abra o google")
+
+
+def test_preflight_reports_missing_ollama(monkeypatch):
+    def boom(*a, **k):
+        raise ollama_chat.OllamaError("down")
+    monkeypatch.setattr(ollama_chat, "_http_json", boom)
+    assert "not answering" in ollama_chat.preflight("qwen3", "http://h")
+
+
+def test_preflight_reports_missing_model(monkeypatch):
+    monkeypatch.setattr(ollama_chat, "_http_json", lambda *a, **k: {"models": [{"name": "llama3.1:latest"}]})
+    assert "ollama pull qwen3" in ollama_chat.preflight("qwen3", "http://h")

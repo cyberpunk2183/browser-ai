@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 
-from . import __version__, cdp, mcp_server
+from . import __version__, cdp, mcp_server, ollama_chat
 
 
 USAGE = """web-ai — drive Chrome from an AI agent (MCP over CDP)
@@ -14,6 +15,8 @@ Usage:
   web-ai start          Launch Chrome correctly (debug port + dedicated profile).
   web-ai mcp            Run the MCP server over stdio (wire this into Codex).
   web-ai doctor         Check that the agent can actually control the browser.
+  web-ai chat [task]    Drive the browser with a local Ollama model
+                        (--model qwen3). No task = interactive.
   web-ai tabs           List open tabs.
   web-ai version
 
@@ -154,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
         return _start()
     if cmd == "doctor":
         return _doctor()
+    if cmd == "chat":
+        return ollama_chat.main(argv[1:])
     if cmd == "tabs":
         try:
             tabs = cdp.list_targets()
