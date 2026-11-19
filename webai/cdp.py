@@ -229,8 +229,14 @@ class Session:
     def navigate(self, url: str) -> dict:
         return self.call("Page.navigate", {"url": url})
 
-    def screenshot_png_b64(self) -> str:
-        result = self.call("Page.captureScreenshot", {"format": "png"})
+    def screenshot_png_b64(self, clip: dict | None = None) -> str:
+        """PNG of the viewport, or of `clip` ({x, y, width, height} in page
+        coordinates, may extend below the fold)."""
+        params: dict = {"format": "png"}
+        if clip:
+            params["clip"] = {**clip, "scale": 1}
+            params["captureBeyondViewport"] = True
+        result = self.call("Page.captureScreenshot", params, timeout=60.0)
         return result.get("data", "")
 
     def print_pdf_b64(self) -> str:

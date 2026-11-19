@@ -101,6 +101,7 @@ O `web_screenshot` não é oferecido nesse modo (o modelo lê a página por text
 | `web_eval` | Roda JavaScript na página (a ferramenta "coringa"). |
 | `web_screenshot` | PNG da aba (para IAs com visão). |
 | `web_download_pdf` | Salva a página atual como **PDF** e retorna o caminho do arquivo. |
+| `web_save_screenshot` | Tira **print e salva em PNG**: só um trecho (`text` = palavras que aparecem nele, ou `selector` CSS), a página inteira (`full_page`) ou a tela visível. Retorna o caminho. Ex.: *"tira print da parte que mostra o valor da causa"*. |
 | `web_switch_tab` | Traz uma aba para frente / torna ativa, pelo id. |
 | `web_back` | Volta uma entrada no histórico da aba (botão Voltar). |
 | `web_forward` | Avança uma entrada no histórico da aba (botão Avançar). |
@@ -147,6 +148,7 @@ anexado (o **DevTools aberto** na aba, ou outra automação). Feche o DevTools.
 | `WEBAI_PORT` | `9222` | Porta de debug do Chrome. |
 | `WEBAI_NO_EVAL` | — | `1` desliga o `web_eval`. |
 | `WEBAI_DOWNLOAD_DIR` | `~/Downloads` | Pasta padrão dos PDFs de `web_download_pdf`. |
+| `WEBAI_SCREENSHOT_DIR` | = pasta dos PDFs | Pasta padrão dos prints de `web_save_screenshot`. |
 | `WEBAI_PROFILE` | `~/.browser-ai-profile` | Perfil dedicado que o `web-ai start` usa. |
 | `WEBAI_HEADLESS` | — | `1` faz o `web-ai start` subir o Chrome sem janela (servidores). |
 | `WEBAI_DEBUG` | — | `1` inclui traceback nos erros de ferramenta. |

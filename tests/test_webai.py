@@ -65,7 +65,8 @@ class FakeSession:
         self.calls.append(("navigate", url))
         return {}
 
-    def screenshot_png_b64(self):
+    def screenshot_png_b64(self, clip=None):
+        self.calls.append(("screenshot", clip))
         return "ZmFrZQ=="  # "fake" in base64
 
     def print_pdf_b64(self):
@@ -327,3 +328,58 @@ def test_preflight_reports_missing_ollama(monkeypatch):
 def test_preflight_reports_missing_model(monkeypatch):
     monkeypatch.setattr(ollama_chat, "_http_json", lambda *a, **k: {"models": [{"name": "llama3.1:latest"}]})
     assert "ollama pull qwen3" in ollama_chat.preflight("qwen3", "http://h")
+
+
+# --- web_save_screenshot ----------------------------------------------------
+
+def _shot(monkeypatch, tmp_path, sess, **args):
+    _patch_session(monkeypatch, sess)
+    out = mcp_server.tool_save_screenshot({"path": str(tmp_path) + os.sep, **args})
+    return json.loads(out["content"][0]["text"])
+
+
+def test_save_screenshot_by_text_clips_and_saves(monkeypatch, tmp_path):
+    box = {"x": 10, "y": 2500, "width": 400, "height": 200, "title": "T", "text": "Valor"}
+    sess = FakeSession({"needle": box, "document.title": "Processo 1"})
+    data = _shot(monkeypatch, tmp_path, sess, text="valor da causa")
+    assert open(data["saved"], "rb").read() == b"fake"
+    assert os.path.basename(data["saved"]).startswith("print-Processo 1-")
+    clip = [c for c in sess.calls if c[0] == "screenshot"][0][1]
+    assert clip == {"x": 10.0, "y": 2500.0, "width": 400.0, "height": 200.0}
+
+
+def test_save_screenshot_visible_screen_has_no_clip(monkeypatch, tmp_path):
+    sess = FakeSession({"document.title": "P"})
+    data = _shot(monkeypatch, tmp_path, sess)
+    assert data["captured"] == "visible screen"
+    assert ("screenshot", None) in sess.calls
+
+
+def test_save_screenshot_caps_huge_full_page(monkeypatch, tmp_path):
+    sess = FakeSession({"needle": {"x": 0, "y": 0, "width": 800, "height": 999999},
+                        "document.title": "P"})
+    _shot(monkeypatch, tmp_path, sess, full_page=True)
+    clip = [c for c in sess.calls if c[0] == "screenshot"][0][1]
+    assert clip["height"] == mcp_server._MAX_SHOT_HEIGHT
+
+
+def test_save_screenshot_reports_missing_text(monkeypatch, tmp_path):
+    sess = FakeSession({"needle": {"error": "No visible text matched 'x'"}, "document.title": "P"})
+    try:
+        _shot(monkeypatch, tmp_path, sess, text="x")
+    except cdp.CDPError as exc:
+        assert "No visible text" in str(exc)
+    else:
+        raise AssertionError("expected CDPError")
+
+
+def test_save_screenshot_never_overwrites(monkeypatch, tmp_path):
+    sess = FakeSession({"document.title": "P"})
+    a = _shot(monkeypatch, tmp_path, sess)["saved"]
+    b = _shot(monkeypatch, tmp_path, sess)["saved"]
+    assert a != b and os.path.exists(a) and os.path.exists(b)
+
+
+def test_save_screenshot_offered_to_ollama():
+    names = {t["function"]["name"] for t in ollama_chat.ollama_tools()}
+    assert "web_save_screenshot" in names

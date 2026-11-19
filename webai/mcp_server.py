@@ -259,6 +259,102 @@ def tool_download_pdf(args: dict[str, Any]) -> dict[str, Any]:
                   "title": title, "url": target.get("url")})
 
 
+# Page coordinates of an element: by CSS selector, or the block that holds
+# some visible text (the deepest element containing it, widened to its
+# table/form/section/... or to a reasonably sized block).
+_CLIP_JS = r"""
+(() => {
+  const sel = %s, needle = %s, pad = %d;
+  let el = null;
+  if (sel) {
+    el = document.querySelector(sel);
+    if (!el) return {error: 'No element matched selector ' + JSON.stringify(sel)};
+  } else if (needle) {
+    const n = needle.trim().toLowerCase();
+    const hits = [...document.body.querySelectorAll('*')].filter(e =>
+      e.offsetParent !== null || e.tagName === 'BODY'
+    ).filter(e => (e.innerText || '').toLowerCase().includes(n));
+    if (!hits.length) return {error: 'No visible text matched ' + JSON.stringify(needle)};
+    el = hits.filter(e => !hits.some(o => o !== e && e.contains(o)))[0] || hits[hits.length - 1];
+    const box = el.closest('table,form,fieldset,section,article,li,tr,dl,blockquote');
+    if (box && box !== document.body) el = box;
+    while (el.parentElement && el.parentElement !== document.body &&
+           (el.getBoundingClientRect().height < 60 || getComputedStyle(el).display.startsWith('inline'))) {
+      el = el.parentElement;
+    }
+  }
+  if (el) {
+    el.scrollIntoView({block: 'center'});
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return {error: 'Element has no visible size'};
+    const x = Math.max(0, r.left + scrollX - pad), y = Math.max(0, r.top + scrollY - pad);
+    return {x, y, width: r.width + 2 * pad, height: r.height + 2 * pad,
+            title: document.title, text: (el.innerText || '').slice(0, 200)};
+  }
+  const d = document.documentElement;
+  return {x: 0, y: 0, width: Math.max(d.scrollWidth, innerWidth),
+          height: Math.max(d.scrollHeight, document.body ? document.body.scrollHeight : 0),
+          title: document.title, text: ''};
+})()
+"""
+_MAX_SHOT_HEIGHT = 16000  # Chrome refuses absurdly tall captures
+
+
+def _png_path(args: dict[str, Any], title: str) -> str:
+    import time
+    name = "print-" + _safe_filename(str(title or "pagina"))[:60] + time.strftime("-%Y%m%d-%H%M%S")
+    path = args.get("path")
+    if path:
+        path = os.path.expanduser(path)
+        if os.path.isdir(path) or path.endswith(("/", "\\")):
+            path = os.path.join(path, name + ".png")
+    else:
+        folder = os.environ.get("WEBAI_SCREENSHOT_DIR")
+        folder = os.path.expanduser(folder) if folder else _download_dir()
+        path = os.path.join(folder, name + ".png")
+    if not path.lower().endswith(".png"):
+        path += ".png"
+    base, n = path[:-4], 2
+    while os.path.exists(path) and not args.get("path", "").lower().endswith(".png"):
+        path = f"{base}-{n}.png"  # two shots in the same second: don't overwrite
+        n += 1
+    return path
+
+
+def tool_save_screenshot(args: dict[str, Any]) -> dict[str, Any]:
+    """Save a PNG of part of the page (selector / text), the whole page, or the view."""
+    import base64
+    selector = args.get("selector") or ""
+    text = args.get("text") or ""
+    full_page = bool(args.get("full_page"))
+    pad = int(args.get("padding", 8) or 0)
+    sess, target = _session(args)
+    try:
+        clip = None
+        title = sess.evaluate("document.title") or ""
+        if selector or text or full_page:
+            info = sess.evaluate(_CLIP_JS % (json.dumps(selector), json.dumps(text), pad))
+            if not isinstance(info, dict):
+                raise cdp.CDPError("Could not measure the page.")
+            if info.get("error"):
+                raise cdp.CDPError(info["error"])
+            clip = {k: float(info[k]) for k in ("x", "y", "width", "height")}
+            clip["height"] = min(clip["height"], _MAX_SHOT_HEIGHT)
+        b64 = sess.screenshot_png_b64(clip)
+    finally:
+        sess.close()
+    if not b64:
+        raise cdp.CDPError("Screenshot failed.")
+    path = _png_path(args, title)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(base64.b64decode(b64))
+    what = ("element " + selector) if selector else ("block containing " + repr(text)) if text \
+        else "full page" if full_page else "visible screen"
+    return _data({"saved": path, "bytes": os.path.getsize(path), "captured": what,
+                  "url": target.get("url")})
+
+
 def _history_go(args: dict[str, Any], delta: int, word: str) -> dict[str, Any]:
     sess, _ = _session(args)
     try:
@@ -313,6 +409,7 @@ HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "web_eval": tool_eval,
     "web_screenshot": tool_screenshot,
     "web_download_pdf": tool_download_pdf,
+    "web_save_screenshot": tool_save_screenshot,
     "web_switch_tab": tool_switch_tab,
     "web_back": tool_back,
     "web_forward": tool_forward,
@@ -369,6 +466,15 @@ TOOLS: list[dict[str, Any]] = [
      "description": "Save the current page as a PDF and return the file path. Optional 'path' "
                     "(a file or a folder); defaults to ~/Downloads named after the page title.",
      "inputSchema": _schema({"path": {"type": "string"}})},
+    {"name": "web_save_screenshot",
+     "description": "Take a picture (PNG) and SAVE it to a file for the user; returns the path. "
+                    "To capture just one part, give 'text' (some words visible in that part; "
+                    "the whole block around them is captured) or a CSS 'selector'. "
+                    "full_page=true captures the whole scrolling page; nothing = the visible screen. "
+                    "Optional 'path' (file or folder); default ~/Downloads.",
+     "inputSchema": _schema({"text": {"type": "string"}, "selector": {"type": "string"},
+                             "full_page": {"type": "boolean"}, "path": {"type": "string"},
+                             "padding": {"type": "integer", "description": "Margin in px, default 8."}})},
     {"name": "web_switch_tab",
      "description": "Bring a tab to the front / make it active, by id.",
      "inputSchema": {"type": "object", "properties": {"target_id": {"type": "string"}},
